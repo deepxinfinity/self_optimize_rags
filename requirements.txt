@@ -1,0 +1,32 @@
+# Self-Optimizing RAG — dependencies (Python 3.11)
+# Core retrieval / index
+faiss-cpu>=1.8.0
+sentence-transformers>=3.0.0
+rank-bm25>=0.2.2
+numpy>=1.26,<2.0
+
+# Config
+pyyaml>=6.0
+pydantic>=2.7
+
+# Models
+ollama>=0.3.0
+
+# Optimization
+optuna>=3.6.0
+# dspy-ai lands in Increment 5 (Stage-2 prompt optimization); pinned then to avoid churn now.
+# dspy-ai>=2.5.0
+
+# Web UI (dashboard + chat)
+fastapi>=0.110
+uvicorn>=0.29
+
+# Utilities
+tqdm>=4.66
+orjson>=3.10
+
+# Tests
+pytest>=8.0
+
+# Optional metric implementations (only if we lean on RAGAS in Increment 3)
+# ragas>=0.1.0

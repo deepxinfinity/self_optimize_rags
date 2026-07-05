@@ -1,0 +1,125 @@
+# configs/default.yaml
+# Single source of truth. Nothing in code should hardcode a model, path, or range.
+# CLI can override any key: --set models.generator.name=llama3.2:3b
+
+# ----------------------------------------------------------------------------
+# MODELS — every model is swappable. provider selects the adapter.
+# ----------------------------------------------------------------------------
+models:
+  generator:                      # LLM that writes answers inside the RAG pipeline
+    provider: ollama              # ollama | api
+    name: qwen2.5:7b
+    temperature: 0.0
+    max_tokens: 512
+
+  embedding:                      # dense retrieval embeddings
+    provider: sentence-transformers
+    name: BAAI/bge-base-en-v1.5
+
+  reranker:                       # cross-encoder reranker (toggled by search space)
+    provider: sentence-transformers
+    name: BAAI/bge-reranker-base
+
+  judge:                          # LLM-as-judge for faithfulness / answer relevancy
+    # LOCAL FOR NOW. Intentionally a DIFFERENT family from `generator` (qwen) to avoid
+    # self-evaluation bias — a model tends to over-rate its own outputs. This is the #1
+    # role to upgrade to a strong API judge later: judge quality directly determines how
+    # trustworthy every faithfulness / relevancy score is.
+    provider: ollama
+    name: llama3.1:8b
+    temperature: 0.0
+    # --- enable API judge later: replace the 3 lines above, set API key env var ---
+    # provider: api
+    # api: anthropic                # anthropic | openai | google
+    # name: claude-haiku-4-5-20251001
+
+  # The two arms of the synthetic-eval-reliability study. Add/remove arms freely.
+  # BOTH LOCAL FOR NOW (building/debugging the machinery). The pairing is a deliberate
+  # PROXY for the real contrast: a small model (arm A) vs a stronger one (arm B) mirrors
+  # "older fine-tuned model vs frontier model," so dev runs preview the real finding
+  # instead of only exercising plumbing. Cross-family (Llama vs Gemma) so the two eval
+  # sets are genuinely different in style.
+  eval_generators:
+    - id: local_qg                # arm A: STAND-IN for your fine-tuned bachelor-thesis QG model
+      provider: ollama
+      name: llama3.2:3b           # -> swap to your QG model tag/path when ready
+      temperature: 0.7
+    - id: frontier                # arm B: STAND-IN for a frontier API model
+      provider: ollama
+      name: gemma2:9b             # -> swap to claude/gemini/gpt via api when keys enabled
+      temperature: 0.7
+    # --- enable frontier API arm later: replace arm B above with this, set API key ---
+    # - id: frontier
+    #   provider: api
+    #   api: anthropic
+    #   name: claude-sonnet-5
+    #   temperature: 0.7
+
+# ----------------------------------------------------------------------------
+# DATASET — corpus to index, and the REAL held-out questions (transfer ground truth)
+# ----------------------------------------------------------------------------
+dataset:
+  corpus_path: ./data/corpus/qasper/      # QASPER papers (one .txt per paper), built by `ingest-qasper`
+  corpus_glob: "**/*.txt"
+  real_questions_path: ./data/real_questions_qasper.jsonl   # QASPER human questions; NEVER seen by optimization
+  # each line: {"question": "...", "answer": "...", "gold_doc_id": "<paper_id>.txt"}
+
+# ----------------------------------------------------------------------------
+# EVAL-SET GENERATION — how many synthetic QA pairs per arm, and the split
+# ----------------------------------------------------------------------------
+evalgen:
+  n_pairs_per_arm: 120            # dev-scale for the M3; raise for the full study
+  manual_spotcheck: 50            # reminder to hand-verify quality; logged, not enforced
+  out_dir: ./data/evalsets_qasper # keep QASPER eval sets separate from the sample corpus
+  gen_chunk_size: 512             # fixed window for generating synthetic QA (stable source pool)
+  gen_chunk_overlap: 64
+splits:
+  train: 0.6                      # DSPy few-shot / prompt tuning
+  val:   0.2                      # what the optimizers SELECT against
+  test:  0.2                      # synthetic held-out — touch once
+  seed:  42
+
+# ----------------------------------------------------------------------------
+# SEARCH SPACE — the knobs the optimizer turns. Ranges live here, not in code.
+# ----------------------------------------------------------------------------
+search_space:
+  # Stage 1: retrieval (scored by retrieval metrics — cheap, no generation)
+  chunk_size:    {type: categorical, values: [256, 512, 1024]}
+  chunk_overlap: {type: categorical, values: [50, 100, 200]}
+  top_k:         {type: int, low: 3, high: 10}
+  hybrid_alpha:  {type: float, low: 0.0, high: 1.0}   # 0=BM25 only, 1=dense only
+  use_reranker:  {type: categorical, values: [true, false]}
+  rerank_top_k:  {type: categorical, values: [3, 5]}
+
+  # Stage 2: prompts (scored by judged metrics — expensive). DSPy tunes these;
+  # if manual, these are the seed prompts the loop iterates on.
+  prompts:
+    query_rewrite_enabled: {type: categorical, values: [true, false]}
+    answer_prompt_seed: |
+      Answer the question using ONLY the provided context. If the context is
+      insufficient, say so. Be concise and cite nothing outside the context.
+    rewrite_prompt_seed: |
+      Rewrite the user's question into a search query that maximizes retrieval
+      of relevant passages. Return only the rewritten query.
+
+# ----------------------------------------------------------------------------
+# OPTIMIZATION — two stages, each with its own objective metric
+# ----------------------------------------------------------------------------
+optimization:
+  stage1_retrieval:
+    method: optuna                # optuna | grid
+    n_trials: 60
+    metric: mrr                   # mrr | hit_rate
+  stage2_prompts:
+    method: dspy                  # dspy | manual
+    n_trials: 15                  # keep small — this one costs API $
+    metric: faithfulness          # faithfulness | answer_relevancy
+    sample_size: 100              # eval samples per trial (cost control)
+
+# ----------------------------------------------------------------------------
+# RUNTIME
+# ----------------------------------------------------------------------------
+runtime:
+  cache_dir: ./.cache/api         # hash-keyed on-disk cache for ALL api/judge calls
+  out_dir: ./runs                 # timestamped run folders + best_configs.json
+  log_every_trial: true

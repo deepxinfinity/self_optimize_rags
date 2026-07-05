@@ -1,0 +1,22 @@
+claude.md
+notes/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.vscode/
+.idea/
+
+# Project outputs / caches / large data
+runs/
+.cache/
+*.faiss
+data/corpus/
+data/evalsets/
+data/evalsets_qasper/
+data/qasper_raw/
+data/real_questions_qasper.jsonl
+# keep small committed samples explicitly (see data/corpus/sample/.gitkeep)
+!data/corpus/sample/
+!data/corpus/sample/**
