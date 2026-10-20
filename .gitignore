@@ -1,0 +1,23 @@
+notes/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.vscode/
+.idea/
+*.code-workspace
+
+# outputs, caches, large data
+runs/
+projects/
+.cache/
+data/corpus/*
+!data/corpus/sample/
+data/evalsets/
+data/evalsets_qasper/
+data/evalsets_qasper_v2/
+data/qasper_raw/
+data/real_questions_qasper*.jsonl
+data/*.log

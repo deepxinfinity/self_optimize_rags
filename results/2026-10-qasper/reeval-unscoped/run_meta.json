@@ -1,0 +1,12 @@
+{
+  "kind": "reeval",
+  "corpus_path": "./data/corpus/qasper/",
+  "config": "configs/qasper.yaml",
+  "overrides": [
+    "dataset.real_questions_path=./data/real_questions_qasper_unscoped.jsonl"
+  ],
+  "arm": null,
+  "split": null,
+  "pid": 87654,
+  "started_at": "2026-10-18T15:42:40"
+}

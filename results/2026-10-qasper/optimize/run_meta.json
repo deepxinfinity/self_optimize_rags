@@ -1,0 +1,10 @@
+{
+  "kind": "optimize",
+  "corpus_path": "./data/corpus/qasper/",
+  "config": "configs/qasper.yaml",
+  "overrides": [],
+  "arm": null,
+  "split": null,
+  "pid": 64576,
+  "started_at": "2026-10-17T23:47:38"
+}

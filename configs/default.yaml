@@ -1,0 +1,122 @@
+# General-purpose config: point dataset.corpus_path at your documents and run
+#   python -m selfrag pipeline --config configs/default.yaml --set dataset.corpus_path=./my_docs
+# Any key can be overridden the same way with --set a.b.c=value.
+
+models:
+  generator:                       # answers the questions
+    provider: ollama               # ollama | api
+    name: qwen2.5:7b
+    temperature: 0.0
+    max_tokens: 512
+    num_ctx: 8192
+
+  # cpu leaves memory for the ollama models on a 16 GB Mac; use mps or cuda if you have room.
+  # Pre-compute corpus embeddings on the GPU with `selfrag embed --set models.embedding.device=mps`.
+  embedding:
+    provider: sentence-transformers
+    name: BAAI/bge-base-en-v1.5
+    device: cpu
+
+  reranker:
+    provider: sentence-transformers
+    name: BAAI/bge-reranker-base
+    device: cpu
+
+  judge:                           # scores answers; a different family from the generator
+    provider: ollama
+    name: llama3.1:8b
+    temperature: 0.0
+    max_tokens: 256
+    num_ctx: 8192
+    # provider: api
+    # api: anthropic
+    # name: claude-haiku-4-5-20251001
+
+  # The model that writes the test questions. Add more entries to compare question writers.
+  eval_generators:
+    - id: synthetic
+      provider: ollama
+      name: llama3.2:3b
+      temperature: 0.7
+      max_tokens: 384              # small models sometimes loop in JSON mode
+      num_ctx: 4096
+
+dataset:
+  corpus_path: ./data/corpus/sample/       # three short docs to try it out
+  corpus_glob: "**/*.{txt,md,pdf,docx,html}"
+  # Optional real questions to check the tuned setup on, one JSON object per line:
+  # {"question": ..., "answer": ..., "gold_doc_id": <path relative to corpus_path>, "evidence": [...]}
+  # Set to null if you don't have any; the report then only has synthetic scores.
+  real_questions_path: ./data/real_questions.jsonl
+
+evalgen:
+  n_pairs_per_arm: 400
+  manual_spotcheck: 50
+  out_dir: ./data/evalsets
+  gen_chunk_size: 512
+  gen_chunk_overlap: 64
+
+splits:
+  train: 0.6
+  val:   0.2
+  test:  0.2
+  seed:  42
+
+retrieval:
+  context_budget_words: 1600       # same amount of context for every setup
+
+# the untuned setup everything is compared against
+baseline:
+  chunk_size: 256
+  chunk_overlap: 32
+  top_k: 5
+  hybrid_alpha: 0.5
+  use_reranker: false
+  rerank_candidates: 20
+
+search_space:
+  # bge-base reads at most 512 tokens (~380 words), longer chunks get truncated when embedded
+  chunk_size:        {type: categorical, values: [128, 256, 384]}
+  chunk_overlap:     {type: categorical, values: [0, 32, 64]}
+  top_k:             {type: int, low: 3, high: 12}
+  hybrid_alpha:      {type: float, low: 0.0, high: 1.0}   # 0 = BM25 only, 1 = dense only
+  use_reranker:      {type: categorical, values: [true, false]}
+  rerank_candidates: {type: categorical, values: [20, 40]}
+
+  prompts:
+    query_rewrite_enabled: {type: categorical, values: [true, false]}
+    answer_prompt_seed: |
+      Answer the question using ONLY the provided context. If the context is
+      insufficient, say so. Be concise and cite nothing outside the context.
+    rewrite_prompt_seed: |
+      Rewrite the user's question into a search query that maximizes retrieval
+      of relevant passages. Return only the rewritten query.
+
+optimization:
+  stage1_retrieval:
+    n_trials: 40
+    metric: passage_hit_rate       # passage_hit_rate | passage_mrr | hit_rate | mrr
+  stage2_prompts:
+    method: manual
+    n_trials: 6
+    metric: answer_correctness
+    sample_size: 40                # val pairs scored per candidate prompt
+    train_sample_size: 20          # train pairs the rewriter learns from
+    min_delta: 0.02
+    proposer:
+      provider: ollama
+      name: llama3.1:8b
+      temperature: 0.0
+      max_tokens: 1024
+      num_ctx: 8192
+  final_eval:
+    # answers judged per held-out set (null = all). Retrieval metrics always use every pair.
+    real_sample_size: 150
+    synthetic_sample_size: 40
+  judged_metrics: [answer_correctness, faithfulness, answer_relevancy]
+
+runtime:
+  cache_dir: ./.cache/api
+  embedding_cache_dir: ./.cache/embeddings
+  out_dir: ./runs
+  log_every_trial: true

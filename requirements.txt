@@ -1,0 +1,31 @@
+# Python 3.11
+
+# retrieval
+sentence-transformers>=3.0.0
+rank-bm25>=0.2.2
+numpy>=1.26,<2.0
+
+# config
+pyyaml>=6.0
+pydantic>=2.7
+
+# models
+ollama>=0.3.0
+
+# optimization
+optuna>=3.6.0
+
+# web UI
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+httpx>=0.27
+
+# document parsers for uploads (a missing one just skips that file type)
+pypdf>=4.0
+python-docx>=1.1
+openpyxl>=3.1
+pandas>=2.0
+
+# tests
+pytest>=8.0

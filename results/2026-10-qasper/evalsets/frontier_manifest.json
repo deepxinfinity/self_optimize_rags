@@ -1,0 +1,18 @@
+{
+  "arm_id": "frontier",
+  "model": "gemma2:9b",
+  "n_pairs": 400,
+  "splits": {
+    "train": 240,
+    "val": 80,
+    "test": 80
+  },
+  "generation": {
+    "ungrounded": 20,
+    "aborted": 2,
+    "unparsed": 5,
+    "attempts": 427,
+    "kept": 400
+  },
+  "seed": 42
+}

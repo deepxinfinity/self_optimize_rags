@@ -1,0 +1,134 @@
+# QASPER study. Any key can be overridden with --set a.b.c=value.
+
+models:
+  generator:
+    provider: ollama
+    name: qwen2.5:7b
+    temperature: 0.0
+    max_tokens: 512
+    num_ctx: 8192
+
+  # On MPS these two hold 4-8 GB of GPU memory for the life of the process, which the ollama
+  # models need on a 16 GB Mac. Pre-compute corpus embeddings on MPS with `selfrag embed` instead.
+  embedding:
+    provider: sentence-transformers
+    name: BAAI/bge-base-en-v1.5
+    device: cpu
+
+  reranker:
+    provider: sentence-transformers
+    name: BAAI/bge-reranker-base
+    device: cpu
+
+  # Every ollama model gets a max_tokens cap: in JSON mode small models occasionally loop and
+  # would otherwise generate until the request times out.
+  judge:
+    # different family from the generator so it isn't grading its own answers
+    provider: ollama
+    name: llama3.1:8b
+    temperature: 0.0
+    max_tokens: 256
+    num_ctx: 8192
+    # provider: api
+    # api: anthropic
+    # name: claude-haiku-4-5-20251001
+
+  # arm A stands in for the fine-tuned QG model, arm B for a frontier model
+  eval_generators:
+    - id: local_qg
+      provider: ollama
+      name: llama3.2:3b
+      temperature: 0.7
+      max_tokens: 384
+      num_ctx: 4096
+    - id: frontier
+      provider: ollama
+      name: gemma2:9b
+      temperature: 0.7
+      max_tokens: 384
+      num_ctx: 4096
+    # - id: frontier
+    #   provider: api
+    #   api: anthropic
+    #   name: claude-sonnet-5
+    #   temperature: 0.7
+
+dataset:
+  corpus_path: ./data/corpus/qasper/
+  corpus_glob: "**/*.txt"
+  # ingest-qasper --n-papers 1000 --n-questions 300 --scope-with-title --require-evidence
+  real_questions_path: ./data/real_questions_qasper_scoped.jsonl
+
+evalgen:
+  n_pairs_per_arm: 400
+  manual_spotcheck: 50
+  out_dir: ./data/evalsets_qasper_v2
+  gen_chunk_size: 512
+  gen_chunk_overlap: 64
+  scope_with_title: true           # prefix questions the same way as the real ones
+
+splits:
+  train: 0.6
+  val:   0.2
+  test:  0.2
+  seed:  42
+
+retrieval:
+  # every config gets the same amount of context (~2.1k tokens), otherwise larger chunks and
+  # top_k win on recall just by sending more of the paper
+  context_budget_words: 1600
+
+baseline:
+  chunk_size: 256
+  chunk_overlap: 32
+  top_k: 5
+  hybrid_alpha: 0.5
+  use_reranker: false
+  rerank_candidates: 20
+
+search_space:
+  # bge-base reads at most 512 tokens (~380 words), longer chunks get truncated when embedded
+  chunk_size:        {type: categorical, values: [128, 256, 384]}
+  chunk_overlap:     {type: categorical, values: [0, 32, 64]}
+  top_k:             {type: int, low: 3, high: 12}
+  hybrid_alpha:      {type: float, low: 0.0, high: 1.0}   # 0 = BM25 only, 1 = dense only
+  use_reranker:      {type: categorical, values: [true, false]}
+  rerank_candidates: {type: categorical, values: [20, 40]}
+
+  prompts:
+    query_rewrite_enabled: {type: categorical, values: [true, false]}
+    answer_prompt_seed: |
+      Answer the question using ONLY the provided context. If the context is
+      insufficient, say so. Be concise and cite nothing outside the context.
+    rewrite_prompt_seed: |
+      Rewrite the user's question into a search query that maximizes retrieval
+      of relevant passages. Return only the rewritten query.
+
+optimization:
+  stage1_retrieval:
+    n_trials: 40
+    metric: passage_hit_rate       # passage_hit_rate | passage_mrr | hit_rate | mrr
+  stage2_prompts:
+    method: manual
+    n_trials: 6
+    metric: answer_correctness     # also the headline metric of the results table
+    sample_size: 40                # val pairs scored per candidate prompt
+    train_sample_size: 20          # train pairs the proposer's failures come from
+    min_delta: 0.02
+    proposer:                      # rewrites the answer prompt; same model as the judge
+      provider: ollama
+      name: llama3.1:8b
+      temperature: 0.0
+      max_tokens: 1024
+      num_ctx: 8192
+  final_eval:
+    # answers judged per held-out set (null = all). Retrieval metrics always use every pair.
+    real_sample_size: 150
+    synthetic_sample_size: 40
+  judged_metrics: [answer_correctness, faithfulness, answer_relevancy]
+
+runtime:
+  cache_dir: ./.cache/api
+  embedding_cache_dir: ./.cache/embeddings
+  out_dir: ./runs
+  log_every_trial: true

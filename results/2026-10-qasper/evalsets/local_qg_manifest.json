@@ -1,0 +1,17 @@
+{
+  "arm_id": "local_qg",
+  "model": "llama3.2:3b",
+  "n_pairs": 400,
+  "splits": {
+    "train": 240,
+    "val": 80,
+    "test": 80
+  },
+  "generation": {
+    "ungrounded": 36,
+    "unparsed": 3,
+    "attempts": 439,
+    "kept": 400
+  },
+  "seed": 42
+}
